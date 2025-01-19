@@ -5,8 +5,8 @@ using System.Collections;
 public class TileLoader : MonoBehaviour
 {
     public int zoom = 14; // Default zoom level
-    public int tileX = 8830; // Default X tile index
-    public int tileY = 5791; // Default Y tile index
+    public int tileX = 1234; // Default X tile index
+    public int tileY = 1234; // Default Y tile index
     public Renderer mapRenderer; // The plane or UI element to display the map
 
     private string tileServerURL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";

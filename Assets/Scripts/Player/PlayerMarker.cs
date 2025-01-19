@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class PlayerMarker : MonoBehaviour
 {
@@ -8,5 +9,6 @@ public class PlayerMarker : MonoBehaviour
     public void UpdatePosition(Vector3 newPosition)
     {
         transform.position = newPosition + offset;
+        Debug.Log("update");
     }
 }

@@ -5,15 +5,18 @@ using UnityEngine.UI;
 public class GPSManager : MonoBehaviour
 {
     public TileLoader tileLoader;
-    public PlayerMarker playerMarker; // Assign PlayerMarker in Inspector
-    public Transform mapTransform; // Assign MapContainer in Inspector
+    public PlayerMarker playerMarker;
+    public Transform mapTransform;
     public Text debugText;
 
     private bool gpsInitialized = false;
+    private float updateInterval = 1.0f; // Update GPS every second
+    private bool compassInitialized = false;
 
     void Start()
     {
         StartCoroutine(StartGPS());
+        StartCoroutine(StartCompass());
     }
 
     IEnumerator StartGPS()
@@ -24,7 +27,7 @@ public class GPSManager : MonoBehaviour
             yield break;
         }
 
-        Input.location.Start();
+        Input.location.Start(0.1f, 0.1f);
 
         int maxWait = 10;
         while (Input.location.status == LocationServiceStatus.Initializing && maxWait > 0)
@@ -39,41 +42,91 @@ public class GPSManager : MonoBehaviour
             yield break;
         }
 
-        Debug.Log("GPS location success");
+        Debug.Log("GPS initialized successfully.");
         gpsInitialized = true;
+
+        StartCoroutine(UpdateGPS());
     }
 
-    void Update()
+    IEnumerator StartCompass()
     {
-        if (!gpsInitialized || Input.location.status != LocationServiceStatus.Running)
-            return;
-
-        float lat = Input.location.lastData.latitude;
-        float lon = Input.location.lastData.longitude;
-
-        Debug.Log("lat: " + lat + ", long: " + lon);
-
-        int tileX, tileY;
-        ConvertLatLonToTile(lat, lon, tileLoader.zoom, out tileX, out tileY);
-
-        if (tileX != tileLoader.tileX || tileY != tileLoader.tileY)
+        if (!SystemInfo.supportsGyroscope)
         {
-            tileLoader.tileX = tileX;
-            tileLoader.tileY = tileY;
-            tileLoader.StartCoroutine(tileLoader.LoadTile(tileX, tileY, tileLoader.zoom));
+            Debug.LogWarning("Gyroscope not supported.");
         }
 
-        Vector3 playerPosition = ConvertGPSPositionToMap(lat, lon); // Adjust to correct coordinate mapping
-        debugText.text = "x: " + playerPosition.x + ", z: " + playerPosition.z;
-        playerMarker.UpdatePosition(playerPosition);
+        if (!Input.compass.enabled)
+        {
+            Input.compass.enabled = true;
+            Input.gyro.enabled = true;
+        }
+
+        yield return new WaitForSeconds(1); // Allow some time for initialization
+
+        if (Input.compass.enabled)
+        {
+            Debug.Log("Compass initialized successfully.");
+            compassInitialized = true;
+        }
+        else
+        {
+            Debug.LogWarning("Failed to initialize compass.");
+        }
     }
 
+    IEnumerator UpdateGPS()
+    {
+        while (gpsInitialized)
+        {
+            if (Input.location.status == LocationServiceStatus.Running)
+            {
+                float lat = Input.location.lastData.latitude;
+                float lon = Input.location.lastData.longitude;
+                double timestamp = Input.location.lastData.timestamp;
+                float heading = GetDeviceHeading();
 
-    void ConvertLatLonToTile(float lat, float lon, int zoom, out int tileX, out int tileY)
+                Debug.Log($"Updated GPS: lat: {lat}, long: {lon}, timestamp: {timestamp}, heading: {heading}");
+                debugText.text = $"lat: {lat}, long: {lon}, heading: {heading}°";
+
+                int tileX, tileY;
+                ConvertLatLonToTile(lat, lon, tileLoader.zoom, out tileX, out tileY);
+
+                if (tileX != tileLoader.tileX || tileY != tileLoader.tileY)
+                {
+                    tileLoader.tileX = tileX;
+                    tileLoader.tileY = tileY;
+                    tileLoader.StartCoroutine(tileLoader.LoadTile(tileX, tileY, tileLoader.zoom));
+                }
+
+                Vector3 playerPosition = ConvertGPSPositionToMap(lat, lon);
+                playerMarker.UpdatePosition(playerPosition);
+                playerMarker.transform.rotation = Quaternion.Euler(90, heading, 0); // Rotate marker
+            }
+            else
+            {
+                Debug.LogWarning("GPS lost signal. Waiting for recovery...");
+            }
+
+            yield return new WaitForSeconds(updateInterval);
+        }
+    }
+
+    float GetDeviceHeading()
+    {
+        if (compassInitialized)
+        {
+            return Input.compass.trueHeading; // Returns heading relative to true north
+        }
+        else
+        {
+            return 0f; // Default if compass not available
+        }
+    }
+
+    public void ConvertLatLonToTile(float lat, float lon, int zoom, out int tileX, out int tileY)
     {
         tileX = (int)((lon + 180.0) / 360.0 * (1 << zoom));
-        tileY = (int)((1f - Mathf.Log(Mathf.Tan((float)lat * Mathf.PI / 180f) + 1f / Mathf.Cos((float)lat * Mathf.PI / 180f)) / Mathf.PI) / 2f * (1 << zoom));
-
+        tileY = (int)((1f - Mathf.Log(Mathf.Tan(lat * Mathf.PI / 180f) + 1f / Mathf.Cos(lat * Mathf.PI / 180f)) / Mathf.PI) / 2f * (1 << zoom));
     }
 
     Vector3 ConvertGPSPositionToMap(float lat, float lon)
@@ -83,38 +136,28 @@ public class GPSManager : MonoBehaviour
 
         ConvertLatLonToTile(lat, lon, zoom, out tileX, out tileY);
 
-        // Total number of tiles at current zoom level
         float numTiles = Mathf.Pow(2, zoom);
-
-        // Convert lat/lon to tile coordinates (floating-point values)
         float tileFloatX = (lon + 180f) / 360f * numTiles;
         float tileFloatY = (1f - Mathf.Log(Mathf.Tan(lat * Mathf.PI / 180f) + 1f / Mathf.Cos(lat * Mathf.PI / 180f)) / Mathf.PI) / 2f * numTiles;
 
-        // Get precise position inside the tile (normalized 0-1 range)
         float localX = tileFloatX - Mathf.Floor(tileFloatX);
         float localY = tileFloatY - Mathf.Floor(tileFloatY);
-
-        // Flip Y (since Unity’s coordinate system is bottom-left, OSM is top-left)
         localY = 1 - localY;
 
         Debug.Log($"GPS lat: {lat}, lon: {lon} | Tile: {tileX}, {tileY} | Local X,Y: {localX}, {localY}");
 
-        // Scale to Unity world coordinates (assuming a 10x10 map)
         float mapWidth = 10f;
         float mapHeight = 10f;
-
         float worldX = (localX - 0.5f) * mapWidth;
         float worldY = (localY - 0.5f) * mapHeight;
 
         return new Vector3(worldX, 0.1f, worldY);
     }
 
-
-
-
-
     private void OnApplicationQuit()
     {
         Input.location.Stop();
+        Input.compass.enabled = false;
+        Input.gyro.enabled = false;
     }
 }

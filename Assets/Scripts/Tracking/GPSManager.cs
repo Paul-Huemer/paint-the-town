@@ -7,16 +7,14 @@ public class GPSManager : MonoBehaviour
     public TileLoader tileLoader;
     public PlayerMarker playerMarker;
     public Transform mapTransform;
-    public Text debugText;
 
     private bool gpsInitialized = false;
     private float updateInterval = 1.0f; // Update GPS every second
-    private bool compassInitialized = false;
+
 
     void Start()
     {
         StartCoroutine(StartGPS());
-        StartCoroutine(StartCompass());
     }
 
     IEnumerator StartGPS()
@@ -48,32 +46,6 @@ public class GPSManager : MonoBehaviour
         StartCoroutine(UpdateGPS());
     }
 
-    IEnumerator StartCompass()
-    {
-        if (!SystemInfo.supportsGyroscope)
-        {
-            Debug.LogWarning("Gyroscope not supported.");
-        }
-
-        if (!Input.compass.enabled)
-        {
-            Input.compass.enabled = true;
-            Input.gyro.enabled = true;
-        }
-
-        yield return new WaitForSeconds(1); // Allow some time for initialization
-
-        if (Input.compass.enabled)
-        {
-            Debug.Log("Compass initialized successfully.");
-            compassInitialized = true;
-        }
-        else
-        {
-            Debug.LogWarning("Failed to initialize compass.");
-        }
-    }
-
     IEnumerator UpdateGPS()
     {
         while (gpsInitialized)
@@ -83,10 +55,8 @@ public class GPSManager : MonoBehaviour
                 float lat = Input.location.lastData.latitude;
                 float lon = Input.location.lastData.longitude;
                 double timestamp = Input.location.lastData.timestamp;
-                float heading = GetDeviceHeading();
 
-                Debug.Log($"Updated GPS: lat: {lat}, long: {lon}, timestamp: {timestamp}, heading: {heading}");
-                debugText.text = $"lat: {lat}, long: {lon}, heading: {heading}°";
+                Debug.Log($"Updated GPS: lat: {lat}, long: {lon}, timestamp: {timestamp}");
 
                 int tileX, tileY;
                 ConvertLatLonToTile(lat, lon, tileLoader.zoom, out tileX, out tileY);
@@ -98,9 +68,10 @@ public class GPSManager : MonoBehaviour
                     tileLoader.StartCoroutine(tileLoader.LoadTile(tileX, tileY, tileLoader.zoom));
                 }
 
-                Vector3 playerPosition = ConvertGPSPositionToMap(lat, lon);
-                playerMarker.UpdatePosition(playerPosition);
-                playerMarker.transform.rotation = Quaternion.Euler(90, heading, 0); // Rotate marker
+                Vector3 targetPosition = ConvertGPSPositionToMap(lat, lon);
+
+                // Smoothly move the player marker to the new position
+                playerMarker.UpdatePosition(targetPosition);
             }
             else
             {
@@ -108,18 +79,6 @@ public class GPSManager : MonoBehaviour
             }
 
             yield return new WaitForSeconds(updateInterval);
-        }
-    }
-
-    float GetDeviceHeading()
-    {
-        if (compassInitialized)
-        {
-            return Input.compass.trueHeading; // Returns heading relative to true north
-        }
-        else
-        {
-            return 0f; // Default if compass not available
         }
     }
 

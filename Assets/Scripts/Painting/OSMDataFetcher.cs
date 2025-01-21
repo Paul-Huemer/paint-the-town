@@ -11,7 +11,7 @@ public class OSMDataFetcher : MonoBehaviour
     public TileLoader tileLoader;
     public Material roadMaterial; // Assign a simple material in the Inspector
 
-    private List<Vector3[]> roadSegments = new List<Vector3[]>(); // Stores road segment positions
+    public List<Vector3[]> roadSegments = new List<Vector3[]>(); // Stores road segment positions
     public List<Vector3> roadPositions = new List<Vector3>();
 
     void Start()
@@ -69,73 +69,76 @@ public class OSMDataFetcher : MonoBehaviour
         {
             if (element.type == "way" && element.nodes.Count > 1)
             {
-                List<Vector3> roadPoints = new List<Vector3>();
-                Vector3 lastPoint = Vector3.zero;
-
-                foreach (var nodeId in element.nodes)
+                for (int i = 0; i < element.nodes.Count - 1; i++)
                 {
-                    if (nodePositions.ContainsKey(nodeId))
+                    if (!nodePositions.ContainsKey(element.nodes[i]) || !nodePositions.ContainsKey(element.nodes[i + 1]))
+                        continue;
+
+                    Vector3 start = nodePositions[element.nodes[i]];
+                    Vector3 end = nodePositions[element.nodes[i + 1]];
+                    float distance = Vector3.Distance(start, end);
+
+                    // **STEP 1: FILTER OUT TOO LONG SEGMENTS**
+                    if (distance > 3f)
                     {
-                        Vector3 currentPoint = nodePositions[nodeId];
-
-                        // If this is not the first point, check the distance
-                        if (lastPoint != Vector3.zero)
-                        {
-                            float distance = Vector3.Distance(lastPoint, currentPoint);
-
-                            // Set a threshold distance (e.g., 50 units)
-                            if (distance > 3f) // Replace 50f with your desired distance threshold
-                            {
-                                Debug.Log($"Skipping point at {currentPoint} because it's too far from {lastPoint}. Distance: {distance}");
-                                continue; // Skip this point if it's too far
-                            }
-                        }
-
-                        roadPoints.Add(currentPoint); // Add the point to the road segment
-                        lastPoint = currentPoint; // Update the last point
+                        Debug.Log($"Skipping segment from {start} to {end} (Too long: {distance})");
+                        continue;
                     }
-                    else
+
+                    // **STEP 2: SPLIT REMAINING SEGMENTS INTO 0.05f PIECES**
+                    float segmentLength = 0.05f;
+                    int numSegments = Mathf.Max(1, Mathf.CeilToInt(distance / segmentLength));
+
+                    Vector3 previousPoint = start;
+
+                    for (int j = 1; j <= numSegments; j++) // Start from 1 to avoid duplicate start point
                     {
-                        Debug.LogWarning($"Node ID {nodeId} missing lat/lon data! Skipping...");
-                    }
-                }
+                        float t = j / (float)numSegments;
+                        Vector3 interpolatedPoint = Vector3.Lerp(start, end, t);
 
-                if (roadPoints.Count > 1)
-                {
-                    // Debug each segment
-                    Debug.Log($"RoadSegment: {roadPoints.Count} points, Start: {roadPoints[0]}, End: {roadPoints[roadPoints.Count - 1]}");
-                    roadSegments.Add(roadPoints.ToArray());
+                        // **Add each small segment as a separate road segment**
+                        roadSegments.Add(new Vector3[] { previousPoint, interpolatedPoint });
+
+                        previousPoint = interpolatedPoint;
+                    }
                 }
             }
         }
 
-        Debug.Log($"Loaded {roadSegments.Count} road segments.");
+        Debug.Log($"Loaded {roadSegments.Count} road segments after filtering and splitting.");
     }
+
+
+
 
     void DrawRoads()
-    {
-        int index = 0;
-        foreach (Vector3[] road in roadSegments)
         {
-            GameObject roadObj = new GameObject("RoadSegment " + index);
-            LineRenderer lineRenderer = roadObj.AddComponent<LineRenderer>();
-
-            string roadLog = "Road Segment " + index +": ";
-            foreach (var point in road)
+            int index = 0;
+            foreach (Vector3[] segment in roadSegments)
             {
-                roadLog += $"({point.x}, {point.y}, {point.z}), ";
+                GameObject roadObj = new GameObject("RoadSegment " + index);
+                LineRenderer lineRenderer = roadObj.AddComponent<LineRenderer>();
+                BoxCollider collider = roadObj.AddComponent<BoxCollider>();
+
+                lineRenderer.positionCount = segment.Length;
+                lineRenderer.SetPositions(segment);
+                lineRenderer.startWidth = 0.02f;
+                lineRenderer.endWidth = 0.02f;
+                lineRenderer.material = roadMaterial;
+
+                // Set collider size and position
+                float segmentLength = Vector3.Distance(segment[0], segment[1]);
+                Vector3 midPoint = (segment[0] + segment[1]) / 2;
+
+                collider.center = midPoint;
+                collider.size = new Vector3(0.05f, 1f, segmentLength);
+                collider.isTrigger = true;  // Ensure it's a trigger so we detect proximity
+
+                roadObj.AddComponent<RoadSegmentTrigger>(); // Custom script to handle activation
+
+                index += 1;
             }
-            Debug.Log(roadLog);
-
-            lineRenderer.positionCount = road.Length;
-            lineRenderer.SetPositions(road);
-            lineRenderer.startWidth = 0.02f;
-            lineRenderer.endWidth = 0.02f;
-            lineRenderer.material = roadMaterial;
-
-            index += 1;
         }
-    }
 
     void ConvertTileToBoundingBox(int tileX, int tileY, int zoom, out float minLat, out float minLon, out float maxLat, out float maxLon)
     {

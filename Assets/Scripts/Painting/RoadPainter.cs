@@ -27,7 +27,7 @@ public class RoadPainter : MonoBehaviour
         lineRenderer.material = new Material(Shader.Find("Sprites/Default"));
 
         // Assuming osmDataFetcher will provide the road segments
-        roadSegments = osmDataFetcher.roadSegments; // roadSegments from OSM data
+        roadSegments = osmDataFetcher.storedRoadSegments; // roadSegments from OSM data
 
         // Start the initialization delay
         StartCoroutine(InitializePainting());
@@ -43,29 +43,36 @@ public class RoadPainter : MonoBehaviour
 
     void Update()
     {
-        if (!isInitialized)
-            return; // If not initialized, do nothing
+        if (!isInitialized) return; // If not initialized, do nothing
 
         Vector3 playerPos = playerMarker.transform.position;
+        Vector3 nearestRoadPoint = Vector3.zero;
+        float minDistance = detectionRadius;  // Max distance within which the snap happens
+        bool foundRoad = false;
 
-        // Go through each road segment and check if the player is close enough
-        foreach (Vector3[] roadSegment in roadSegments)
+        // Go through each road segment and find the closest road point
+        foreach (Vector3[] roadSegment in osmDataFetcher.storedRoadSegments)
         {
             foreach (Vector3 roadPosition in roadSegment)
             {
-                // If the player is close enough to a road position, paint the road
-                if (Vector3.Distance(playerPos, roadPosition) < detectionRadius)
+                float distance = Vector3.Distance(playerPos, roadPosition);
+                if (distance < minDistance)
                 {
-                    // Only paint if it hasn't been painted before
-                    if (!paintedRoads.Contains(roadPosition))
-                    {
-                        paintedRoads.Add(roadPosition);
-                        PaintRoad(roadPosition);
-                    }
+                    minDistance = distance;
+                    nearestRoadPoint = roadPosition;
+                    foundRoad = true;
                 }
             }
         }
+
+        // Only paint if a road was found within detection radius
+        if (foundRoad && !paintedRoads.Contains(nearestRoadPoint))
+        {
+            paintedRoads.Add(nearestRoadPoint);
+            PaintRoad(nearestRoadPoint);
+        }
     }
+
 
     void PaintRoad(Vector3 position)
     {

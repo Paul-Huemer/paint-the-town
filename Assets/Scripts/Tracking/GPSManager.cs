@@ -4,16 +4,28 @@ using UnityEngine.UI;
 
 public class GPSManager : MonoBehaviour
 {
-    public TileLoader tileLoader;
+    public TileManager tileManager;
     public PlayerMarker playerMarker;
-    public Transform mapTransform;
 
     private bool gpsInitialized = false;
     private float updateInterval = 1.0f; // Update GPS every second
 
+    public float lat = 0;
+    public float lon = 0;
+
+    private float testLat = 0;
 
     void Start()
     {
+        if (tileManager == null)
+        {
+            tileManager = FindObjectOfType<TileManager>();
+            if (tileManager == null)
+            {
+                Debug.LogError("TileManager not found! Make sure it is instantiated and available.");
+                return;
+            }
+        }
         StartCoroutine(StartGPS());
     }
 
@@ -52,25 +64,22 @@ public class GPSManager : MonoBehaviour
         {
             if (Input.location.status == LocationServiceStatus.Running)
             {
-                float lat = Input.location.lastData.latitude;
-                float lon = Input.location.lastData.longitude;
-                double timestamp = Input.location.lastData.timestamp;
+                lat = Input.location.lastData.latitude;
+                lon = Input.location.lastData.longitude;
 
-                Debug.Log($"Updated GPS: lat: {lat}, long: {lon}, timestamp: {timestamp}");
+                int newTileX, newTileY;
+                ConvertLatLonToTile(lat, lon, tileManager.zoom, out newTileX, out newTileY);
 
-                int tileX, tileY;
-                ConvertLatLonToTile(lat, lon, tileLoader.zoom, out tileX, out tileY);
-
-                if (tileX != tileLoader.tileX || tileY != tileLoader.tileY)
+                // ✅ Only reload tiles if the tile position changed
+                if (newTileX != tileManager.tileX || newTileY != tileManager.tileY)
                 {
-                    tileLoader.tileX = tileX;
-                    tileLoader.tileY = tileY;
-                    tileLoader.StartCoroutine(tileLoader.LoadTile(tileX, tileY, tileLoader.zoom));
+                    tileManager.tileX = newTileX;
+                    tileManager.tileY = newTileY;
+                    Debug.Log($"X {newTileX} Y {newTileY}");
+                    tileManager.LoadTilesAround(new Vector2Int(newTileX, newTileY));  // ✅ Reload adjacent tiles
                 }
 
                 Vector3 targetPosition = ConvertGPSPositionToMap(lat, lon);
-
-                // Smoothly move the player marker to the new position
                 playerMarker.UpdatePosition(targetPosition);
             }
             else
@@ -90,27 +99,28 @@ public class GPSManager : MonoBehaviour
 
     Vector3 ConvertGPSPositionToMap(float lat, float lon)
     {
-        int zoom = tileLoader.zoom;
+        int zoom = tileManager.zoom;
         int tileX, tileY;
 
-        ConvertLatLonToTile(lat, lon, zoom, out tileX, out tileY);
+        tileManager.ConvertLatLonToTile(lat, lon, zoom, out tileX, out tileY);
 
         float numTiles = Mathf.Pow(2, zoom);
         float tileFloatX = (lon + 180f) / 360f * numTiles;
         float tileFloatY = (1f - Mathf.Log(Mathf.Tan(lat * Mathf.PI / 180f) + 1f / Mathf.Cos(lat * Mathf.PI / 180f)) / Mathf.PI) / 2f * numTiles;
 
-        float localX = tileFloatX - Mathf.Floor(tileFloatX);
-        float localY = tileFloatY - Mathf.Floor(tileFloatY);
-        localY = 1 - localY;
+        // 🔹 Ensure player's world position matches the tile system
+        float localX = (tileFloatX - tileX) * tileManager.tileSize;
+        float localY = (tileFloatY - tileY) * tileManager.tileSize;
+        localY = -localY;  // Flip Y to match Unity's coordinate system
 
-        Debug.Log($"GPS lat: {lat}, lon: {lon} | Tile: {tileX}, {tileY} | Local X,Y: {localX}, {localY}");
+        //Debug.Log($"X {tileFloatX} Y {tileFloatY}");
 
-        float mapWidth = 10f;
-        float mapHeight = 10f;
-        float worldX = (localX - 0.5f) * mapWidth;
-        float worldY = (localY - 0.5f) * mapHeight;
+        float worldX = (tileX - tileManager.tileX) * tileManager.tileSize - tileManager.tileSize/2 + localX;
+        float worldY = (tileManager.tileY - tileY) * tileManager.tileSize + tileManager.tileSize/2 + localY;
 
-        return new Vector3(worldX, 0.1f, worldY);
+        Vector3 worldPos = new Vector3(worldX, 0.2f, worldY);
+
+        return worldPos;
     }
 
     private void OnApplicationQuit()

@@ -8,48 +8,68 @@ public class OSMDataFetcher : MonoBehaviour
 {
     public string overpassAPI = "https://overpass-api.de/api/interpreter";
     public int zoom = 14;
-    public TileLoader tileLoader;
+    public TileManager tileManager;
     public Material roadMaterial; // Assign a simple material in the Inspector
+    public RoadPainter roadPainter;
 
-    public List<Vector3[]> roadSegments = new List<Vector3[]>(); // Stores road segment positions
+    public List<Vector3[]> storedRoadSegments = new List<Vector3[]>(); // Stores road segment positions
     public List<Vector3> roadPositions = new List<Vector3>();
+
+    private HashSet<Vector2Int> loadedTiles = new HashSet<Vector2Int>(); // Keeps track of loaded tiles
+    private Dictionary<Vector2Int, List<Vector3[]>> cachedRoads = new Dictionary<Vector2Int, List<Vector3[]>>();
+
 
     void Start()
     {
+        if (tileManager == null)
+        {
+            tileManager = FindObjectOfType<TileManager>();  // Find TileLoader in the scene
+            if (tileManager == null)
+            {
+                Debug.LogError("tileManager not found! Make sure it is instantiated and available.");
+                return;
+            }
+        }
+
         StartCoroutine(FetchRoadData());
     }
 
     IEnumerator FetchRoadData()
     {
-        float minLat, minLon, maxLat, maxLon;
-        ConvertTileToBoundingBox(tileLoader.tileX, tileLoader.tileY, zoom, out minLat, out minLon, out maxLat, out maxLon);
+        List<Vector2Int> tilesToLoad = new List<Vector2Int>(tileManager.activeTiles.Keys);
 
-        string query = $"[out:json];(way[\"highway\"~\"^(primary|secondary|tertiary|residential)$\"]({minLat},{minLon},{maxLat},{maxLon});node(w););out;";
-
-        string url = $"{overpassAPI}?data={UnityWebRequest.EscapeURL(query)}";
-
-        Debug.Log($"Fetching OSM Data from: {url}");  // ✅ Log URL for testing
-
-        UnityWebRequest request = UnityWebRequest.Get(url);
-        yield return request.SendWebRequest();
-
-        if (request.result != UnityWebRequest.Result.Success)
+        foreach (Vector2Int tileCoords in tilesToLoad)
         {
-            Debug.LogError("Failed to fetch OSM data: " + request.error);
-        }
-        else
-        {
-            string jsonData = request.downloadHandler.text;
-            Debug.Log($"OSM Response: {jsonData}");  // ✅ Print JSON response
+            if (cachedRoads.ContainsKey(tileCoords)) continue; // Skip already loaded tiles
 
-            ParseRoadData(jsonData);
-            DrawRoads();
+            float minLat, minLon, maxLat, maxLon;
+            ConvertTileToBoundingBox(tileCoords.x, tileCoords.y, zoom, out minLat, out minLon, out maxLat, out maxLon);
+
+            string query = $"[out:json];(way[\"highway\"~\"^(primary|secondary|tertiary|residential)$\"]({minLat},{minLon},{maxLat},{maxLon});node(w););out;";
+            string url = $"{overpassAPI}?data={UnityWebRequest.EscapeURL(query)}";
+
+            UnityWebRequest request = UnityWebRequest.Get(url);
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                string jsonData = request.downloadHandler.text;
+                List<Vector3[]> roadSegments = ParseRoadData(jsonData, tileCoords);
+                cachedRoads[tileCoords] = roadSegments;
+                storedRoadSegments.AddRange(roadSegments);
+            }
+            else
+            {
+                Debug.LogError($"Failed to fetch OSM data for tile {tileCoords}: {request.error}");
+            }
         }
+        DrawRoads();
     }
 
-    void ParseRoadData(string jsonData)
+
+    List<Vector3[]> ParseRoadData(string jsonData, Vector2Int tileCoords)
     {
-        roadSegments.Clear();
+        List<Vector3[]> roadSegments = new List<Vector3[]>();
         Dictionary<int, Vector3> nodePositions = new Dictionary<int, Vector3>();
 
         OSMResponse response = JsonUtility.FromJson<OSMResponse>(jsonData);
@@ -59,12 +79,12 @@ public class OSMDataFetcher : MonoBehaviour
         {
             if (element.type == "node")
             {
-                Vector3 worldPos = ConvertLatLonToUnity(element.lat, element.lon);
+                Vector3 worldPos = ConvertLatLonToUnity(element.lat, element.lon, tileCoords.x, tileCoords.y);
                 nodePositions[element.id] = worldPos;
             }
         }
 
-        // Process ways using the stored nodes
+        // Process ways using stored nodes
         foreach (var element in response.elements)
         {
             if (element.type == "way" && element.nodes.Count > 1)
@@ -86,7 +106,7 @@ public class OSMDataFetcher : MonoBehaviour
                     }
 
                     // **STEP 2: SPLIT REMAINING SEGMENTS INTO 0.05f PIECES**
-                    float segmentLength = 0.05f;
+                    float segmentLength = 0.2f;
                     int numSegments = Mathf.Max(1, Mathf.CeilToInt(distance / segmentLength));
 
                     Vector3 previousPoint = start;
@@ -105,40 +125,40 @@ public class OSMDataFetcher : MonoBehaviour
             }
         }
 
-        Debug.Log($"Loaded {roadSegments.Count} road segments after filtering and splitting.");
+        Debug.Log($"Loaded {roadSegments.Count} road segments for tile {tileCoords}");
+        return roadSegments;
     }
 
-
-
-
     void DrawRoads()
+    {
+        foreach (var tile in tileManager.activeTiles.Keys)
         {
-            int index = 0;
-            foreach (Vector3[] segment in roadSegments)
+            if (!cachedRoads.ContainsKey(tile)) continue; // Skip tiles with no roads
+
+            foreach (Vector3[] segment in cachedRoads[tile])
             {
-                GameObject roadObj = new GameObject("RoadSegment " + index);
+                GameObject roadObj = new GameObject($"RoadSegment {tile}");
                 LineRenderer lineRenderer = roadObj.AddComponent<LineRenderer>();
+                roadObj.AddComponent<RoadSegmentTrigger>();
                 BoxCollider collider = roadObj.AddComponent<BoxCollider>();
 
                 lineRenderer.positionCount = segment.Length;
                 lineRenderer.SetPositions(segment);
-                lineRenderer.startWidth = 0.02f;
-                lineRenderer.endWidth = 0.02f;
+                lineRenderer.startWidth = 0.03f;
+                lineRenderer.endWidth = 0.03f;
                 lineRenderer.material = roadMaterial;
+                lineRenderer.useWorldSpace = true;  // Ensure world space positioning
+                lineRenderer.sortingOrder = 10;  // Ensure it's drawn above the map
 
-                // Set collider size and position
                 float segmentLength = Vector3.Distance(segment[0], segment[1]);
                 Vector3 midPoint = (segment[0] + segment[1]) / 2;
 
                 collider.center = midPoint;
                 collider.size = new Vector3(0.05f, 1f, segmentLength);
-                collider.isTrigger = true;  // Ensure it's a trigger so we detect proximity
-
-                roadObj.AddComponent<RoadSegmentTrigger>(); // Custom script to handle activation
-
-                index += 1;
+                collider.isTrigger = true;
             }
         }
+    }
 
     void ConvertTileToBoundingBox(int tileX, int tileY, int zoom, out float minLat, out float minLon, out float maxLat, out float maxLon)
     {
@@ -151,30 +171,28 @@ public class OSMDataFetcher : MonoBehaviour
         maxLat = Mathf.Atan((float)Math.Sinh(Math.PI * (1 - 2 * tileY / numTiles))) * Mathf.Rad2Deg;
     }
 
-    Vector3 ConvertLatLonToUnity(float lat, float lon)
+    Vector3 ConvertLatLonToUnity(float lat, float lon, int tileX, int tileY)
     {
-        int zoom = tileLoader.zoom;
-        int tileX, tileY;
-
-        tileLoader.ConvertLatLonToTile(lat, lon, zoom, out tileX, out tileY);
-
+        int zoom = tileManager.zoom;
         float numTiles = Mathf.Pow(2, zoom);
+
         float tileFloatX = (lon + 180f) / 360f * numTiles;
         float tileFloatY = (1f - Mathf.Log(Mathf.Tan(lat * Mathf.PI / 180f) + 1f / Mathf.Cos(lat * Mathf.PI / 180f)) / Mathf.PI) / 2f * numTiles;
 
-        float localX = tileFloatX - Mathf.Floor(tileFloatX);
-        float localY = tileFloatY - Mathf.Floor(tileFloatY);
-        localY = 1 - localY;
+        // Convert global tile position to local tile position
+        float localX = (tileFloatX - tileX) * tileManager.tileSize;
+        float localY = (tileFloatY - tileY) * tileManager.tileSize;
+        localY = -localY;  // Flip Y to match Unity's coordinate system
 
-        //Debug.Log($"GPS lat: {lat}, lon: {lon} | Tile: {tileX}, {tileY} | Local X,Y: {localX}, {localY}");
 
-        float mapWidth = 10f;
-        float mapHeight = 10f;
-        float worldX = (localX - 0.5f) * mapWidth;
-        float worldY = (localY - 0.5f) * mapHeight;
+        // Offset world position based on tile index
+        float worldX = (tileX - tileManager.tileX) * tileManager.tileSize - tileManager.tileSize/2 + localX;
+        float worldY = (tileManager.tileY - tileY) * tileManager.tileSize + tileManager.tileSize/2 + localY;
 
-        return new Vector3(worldX, 0.1f, worldY);
+        Vector3 worldPos = new Vector3(worldX, 0.1f, worldY);
+        return worldPos;
     }
+
 
 
 

@@ -4,26 +4,20 @@ using System.Collections;
 
 public class TileLoader : MonoBehaviour
 {
-    public int zoom = 14; // Default zoom level
-    public int tileX = 1234; // Default X tile index
-    public int tileY = 1234; // Default Y tile index
     public Renderer mapRenderer; // The plane or UI element to display the map
-
-    public int offsetX = 0;
-    public int offsetY = 0;
-
     private string tileServerURL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
-    void Start()
+    public void LoadTile(int x, int y, int zoom)
     {
-        StartCoroutine(LoadTile(tileX+offsetX, tileY+offsetY, zoom));
+        StartCoroutine(LoadTileTexture(x, y, zoom));
     }
 
-    public IEnumerator LoadTile(int x, int y, int z)
+    private IEnumerator LoadTileTexture(int x, int y, int zoom)
     {
-        string url = tileServerURL.Replace("{z}", z.ToString())
+        string url = tileServerURL.Replace("{z}", zoom.ToString())
                                   .Replace("{x}", x.ToString())
                                   .Replace("{y}", y.ToString());
+
 
         using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(url))
         {
@@ -32,7 +26,8 @@ public class TileLoader : MonoBehaviour
             if (request.result == UnityWebRequest.Result.Success)
             {
                 Texture2D tileTexture = DownloadHandlerTexture.GetContent(request);
-                mapRenderer.material.mainTexture = tileTexture;
+                mapRenderer.material.SetTexture("_MainTex", tileTexture);
+                transform.localRotation = Quaternion.Euler(0, 180, 0);
             }
             else
             {
@@ -41,9 +36,17 @@ public class TileLoader : MonoBehaviour
         }
     }
 
-    public void ConvertLatLonToTile(float lat, float lon, int zoom, out int tileX, out int tileY)
+    private Texture2D FlipTexture(Texture2D original)
+    {
+        Texture2D flipped = new Texture2D(original.width, original.height);
+        for (int i = 0; i < original.width; i++)
         {
-            tileX = (int)((lon + 180.0) / 360.0 * (1 << zoom));
-            tileY = (int)((1f - Mathf.Log(Mathf.Tan(lat * Mathf.PI / 180f) + 1f / Mathf.Cos(lat * Mathf.PI / 180f)) / Mathf.PI) / 2f * (1 << zoom));
+            for (int j = 0; j < original.height; j++)
+            {
+                flipped.SetPixel(i, j, original.GetPixel(original.width - i - 1, original.height - j - 1));
+            }
         }
+        flipped.Apply();
+        return flipped;
+    }
 }

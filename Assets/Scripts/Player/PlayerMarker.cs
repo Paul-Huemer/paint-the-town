@@ -24,8 +24,11 @@ public class PlayerMarker : MonoBehaviour
     public void UpdatePosition(Vector3 newPosition)
     {
         float heading = GetDeviceHeading();
-        transform.position = Vector3.Lerp(transform.position, newPosition, smoothSpeed * Time.deltaTime);
-        transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.Euler(90, heading, 0), smoothSpeed * Time.deltaTime);
+
+        //transform.position = Vector3.Lerp(transform.position, newPosition, smoothSpeed * Time.deltaTime);
+        //transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.Euler(90, heading, 0), smoothSpeed * Time.deltaTime);
+        transform.position = newPosition;
+        transform.rotation = Quaternion.Euler(90, heading, 0);
     }
 
     float GetDeviceHeading()

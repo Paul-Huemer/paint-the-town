@@ -17,6 +17,7 @@ public class OSMDataFetcher : MonoBehaviour
 
     private HashSet<Vector2Int> loadedTiles = new HashSet<Vector2Int>(); // Keeps track of loaded tiles
     private Dictionary<Vector2Int, List<Vector3[]>> cachedRoads = new Dictionary<Vector2Int, List<Vector3[]>>();
+    private Dictionary<Vector2Int, List<GameObject>> renderedRoads = new Dictionary<Vector2Int, List<GameObject>>();
 
 
     void Start()
@@ -30,20 +31,19 @@ public class OSMDataFetcher : MonoBehaviour
                 return;
             }
         }
-
-        StartCoroutine(FetchRoadData());
     }
 
-    IEnumerator FetchRoadData()
+    public void LoadRoadsForNewTile(Vector2Int tileCoords)
     {
-        List<Vector2Int> tilesToLoad = new List<Vector2Int>(tileManager.activeTiles.Keys);
+        StartCoroutine(FetchRoadDataForTile(tileCoords));
+    }
 
-        foreach (Vector2Int tileCoords in tilesToLoad)
+    IEnumerator FetchRoadDataForTile(Vector2Int tileCoords)
+    {
+        if (!cachedRoads.ContainsKey(tileCoords)) // Skip if already loaded
         {
-            if (cachedRoads.ContainsKey(tileCoords)) continue; // Skip already loaded tiles
-
             float minLat, minLon, maxLat, maxLon;
-            ConvertTileToBoundingBox(tileCoords.x, tileCoords.y, zoom, out minLat, out minLon, out maxLat, out maxLon);
+            ConvertTileToBoundingBox(tileCoords.x, tileCoords.y, tileManager.zoom, out minLat, out minLon, out maxLat, out maxLon);
 
             string query = $"[out:json];(way[\"highway\"~\"^(primary|secondary|tertiary|residential)$\"]({minLat},{minLon},{maxLat},{maxLon});node(w););out;";
             string url = $"{overpassAPI}?data={UnityWebRequest.EscapeURL(query)}";
@@ -57,14 +57,16 @@ public class OSMDataFetcher : MonoBehaviour
                 List<Vector3[]> roadSegments = ParseRoadData(jsonData, tileCoords);
                 cachedRoads[tileCoords] = roadSegments;
                 storedRoadSegments.AddRange(roadSegments);
+                UnloadRoads();
+                DrawRoads();  // ✅ Refresh the roads
             }
             else
             {
                 Debug.LogError($"Failed to fetch OSM data for tile {tileCoords}: {request.error}");
             }
         }
-        DrawRoads();
     }
+
 
 
     List<Vector3[]> ParseRoadData(string jsonData, Vector2Int tileCoords)
@@ -101,7 +103,6 @@ public class OSMDataFetcher : MonoBehaviour
                     // **STEP 1: FILTER OUT TOO LONG SEGMENTS**
                     if (distance > 3f)
                     {
-                        Debug.Log($"Skipping segment from {start} to {end} (Too long: {distance})");
                         continue;
                     }
 
@@ -131,10 +132,11 @@ public class OSMDataFetcher : MonoBehaviour
 
     void DrawRoads()
     {
-        foreach (var tile in tileManager.activeTiles.Keys)
+        foreach (var tile in cachedRoads.Keys)
         {
             if (!cachedRoads.ContainsKey(tile)) continue; // Skip tiles with no roads
 
+            List<GameObject> roadObjList = new List<GameObject>();
             foreach (Vector3[] segment in cachedRoads[tile])
             {
                 GameObject roadObj = new GameObject($"RoadSegment {tile}");
@@ -156,7 +158,25 @@ public class OSMDataFetcher : MonoBehaviour
                 collider.center = midPoint;
                 collider.size = new Vector3(0.05f, 1f, segmentLength);
                 collider.isTrigger = true;
+
+                roadObjList.Add(roadObj);
             }
+            if (roadObjList.Count > 0) {
+                renderedRoads[tile] = roadObjList;
+            }
+        }
+    }
+
+    void UnloadRoads() {
+        foreach (var tile in renderedRoads.Keys)
+        {
+            if (tile == new Vector2(tileManager.tileX, tileManager.tileY)) continue;
+
+            foreach (GameObject roadObj in renderedRoads[tile])
+            {
+                Destroy(roadObj);
+            }
+            cachedRoads.Remove(tile);
         }
     }
 

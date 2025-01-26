@@ -7,6 +7,8 @@ public class TileManager : MonoBehaviour
     public Dictionary<Vector2Int, GameObject> activeTiles = new Dictionary<Vector2Int, GameObject>();
     private Vector2Int currentTile;
 
+    public OSMDataFetcher osmDataFetcher;
+
     public int tileX = -1;
     public int tileY = -1;
     public int zoom = 14;
@@ -48,7 +50,6 @@ public class TileManager : MonoBehaviour
         {
             if (Mathf.Abs(key.x - center.x) > 1 || Mathf.Abs(key.y - center.y) > 1)
             {
-                Debug.Log($"Destroyed {activeTiles[key]}");
                 Destroy(activeTiles[key]);
                 activeTiles.Remove(key);
             }
@@ -75,6 +76,11 @@ public class TileManager : MonoBehaviour
                     }
                 }
             }
+        }
+
+        if (osmDataFetcher != null)
+        {
+            osmDataFetcher.LoadRoadsForNewTile(new Vector2Int(center.x, center.y));
         }
     }
 

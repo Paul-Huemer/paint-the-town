@@ -64,7 +64,8 @@ public class GPSManager : MonoBehaviour
         {
             if (Input.location.status == LocationServiceStatus.Running)
             {
-                lat = Input.location.lastData.latitude;
+                testLat += 0.001f;
+                lat = Input.location.lastData.latitude + testLat;
                 lon = Input.location.lastData.longitude;
 
                 int newTileX, newTileY;

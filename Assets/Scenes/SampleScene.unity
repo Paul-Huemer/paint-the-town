@@ -246,8 +246,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   tilePrefab: {fileID: 3629299243508019642, guid: 2f86e93b936243a48928e1260bae0735, type: 3}
-  tileX: 0
-  tileY: 0
+  osmDataFetcher: {fileID: 2112422211}
+  tileX: 8842
+  tileY: 5670
   zoom: 14
   tileSize: 10
   player: {fileID: 910337977}

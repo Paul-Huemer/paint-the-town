@@ -19,6 +19,8 @@ public class OSMDataFetcher : MonoBehaviour
     private Dictionary<Vector2Int, List<Vector3[]>> cachedRoads = new Dictionary<Vector2Int, List<Vector3[]>>();
     private Dictionary<Vector2Int, List<GameObject>> renderedRoads = new Dictionary<Vector2Int, List<GameObject>>();
 
+    private Dictionary<Vector2Int, List<GameObject>> walkedOnRoads = new Dictionary<Vector2Int, List<GameObject>>();
+
 
     void Start()
     {
@@ -160,6 +162,10 @@ public class OSMDataFetcher : MonoBehaviour
                 collider.isTrigger = true;
 
                 roadObjList.Add(roadObj);
+
+                if (walkedOnRoads.ContainsKey(tile) && walkedOnRoads[tile].Find((item) => item.Equals(roadObj))) {
+                    lineRenderer.enabled = true;
+                }
             }
             if (roadObjList.Count > 0) {
                 renderedRoads[tile] = roadObjList;
@@ -172,9 +178,17 @@ public class OSMDataFetcher : MonoBehaviour
         {
             if (tile == new Vector2(tileManager.tileX, tileManager.tileY)) continue;
 
+            List<GameObject> roadObjList = new List<GameObject>();
             foreach (GameObject roadObj in renderedRoads[tile])
             {
+                LineRenderer lineRenderer = roadObj.GetComponent<LineRenderer>();
+                if (lineRenderer.enabled) {
+                    roadObjList.Add(roadObj);
+                }
                 Destroy(roadObj);
+            }
+            if (roadObjList.Count > 0) {
+                walkedOnRoads[tile] = roadObjList;
             }
             cachedRoads.Remove(tile);
         }

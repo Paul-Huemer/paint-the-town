@@ -45,11 +45,13 @@ public class TileManager : MonoBehaviour
 
     public void LoadTilesAround(Vector2Int center)
     {
+        List<Vector2Int> tilesToDestroy = new List<Vector2Int>();
         // Unload old tiles
         foreach (var key in new List<Vector2Int>(activeTiles.Keys))
         {
             if (Mathf.Abs(key.x - center.x) > 1 || Mathf.Abs(key.y - center.y) > 1)
             {
+
                 Destroy(activeTiles[key]);
                 activeTiles.Remove(key);
             }

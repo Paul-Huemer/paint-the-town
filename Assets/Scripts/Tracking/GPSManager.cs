@@ -8,7 +8,7 @@ public class GPSManager : MonoBehaviour
     public PlayerMarker playerMarker;
 
     private bool gpsInitialized = false;
-    private float updateInterval = 1.0f; // Update GPS every second
+    private float updateInterval = 0.03f; // Update GPS every second
 
     public float lat = 0;
     public float lon = 0;
@@ -64,7 +64,7 @@ public class GPSManager : MonoBehaviour
         {
             if (Input.location.status == LocationServiceStatus.Running)
             {
-                testLat += 0.001f;
+                testLat += 0.0001f;
                 lat = Input.location.lastData.latitude + testLat;
                 lon = Input.location.lastData.longitude;
 
@@ -76,7 +76,7 @@ public class GPSManager : MonoBehaviour
                 {
                     tileManager.tileX = newTileX;
                     tileManager.tileY = newTileY;
-                    Debug.Log($"X {newTileX} Y {newTileY}");
+                    //Debug.Log($"X {newTileX} Y {newTileY}");
                     tileManager.LoadTilesAround(new Vector2Int(newTileX, newTileY));  // ✅ Reload adjacent tiles
                 }
 

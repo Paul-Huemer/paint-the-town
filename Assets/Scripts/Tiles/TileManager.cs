@@ -11,7 +11,7 @@ public class TileManager : MonoBehaviour
 
     public int tileX = -1;
     public int tileY = -1;
-    public int zoom = 14;
+    public int zoom = 16;
 
     public int tileSize = 10;
     public Transform player; // Assign the player GameObject

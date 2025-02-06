@@ -2,7 +2,10 @@ using UnityEngine;
 
 public class RoadSegmentTrigger : MonoBehaviour
 {
+
     private LineRenderer lineRenderer;
+    public SavingManager savingManager;
+    public Vector2Int tile;
 
     void Start()
     {
@@ -14,6 +17,9 @@ public class RoadSegmentTrigger : MonoBehaviour
     {
         if (other.CompareTag("Player"))  // Ensure the player has the "Player" tag
         {
+            if (lineRenderer.enabled == false && savingManager != null) {
+                savingManager.saveWalkedOnRoad(gameObject, tile);
+            }
             lineRenderer.enabled = true;  // Show the segment when the player enters
         }
     }

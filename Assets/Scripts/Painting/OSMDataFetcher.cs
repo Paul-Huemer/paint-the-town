@@ -7,10 +7,10 @@ using System;
 public class OSMDataFetcher : MonoBehaviour
 {
     public string overpassAPI = "https://overpass-api.de/api/interpreter";
-    public int zoom = 14;
     public TileManager tileManager;
     public Material roadMaterial; // Assign a simple material in the Inspector
     public RoadPainter roadPainter;
+    public SavingManager savingManager;
 
     public List<Vector3[]> storedRoadSegments = new List<Vector3[]>(); // Stores road segment positions
     public List<Vector3> roadPositions = new List<Vector3>();
@@ -18,9 +18,6 @@ public class OSMDataFetcher : MonoBehaviour
     private HashSet<Vector2Int> loadedTiles = new HashSet<Vector2Int>(); // Keeps track of loaded tiles
     private Dictionary<Vector2Int, List<Vector3[]>> cachedRoads = new Dictionary<Vector2Int, List<Vector3[]>>();
     private Dictionary<Vector2Int, List<GameObject>> renderedRoads = new Dictionary<Vector2Int, List<GameObject>>();
-
-    private Dictionary<Vector2Int, List<GameObject>> walkedOnRoads = new Dictionary<Vector2Int, List<GameObject>>();
-
 
     void Start()
     {
@@ -143,7 +140,9 @@ public class OSMDataFetcher : MonoBehaviour
             {
                 GameObject roadObj = new GameObject($"RoadSegment {tile}");
                 LineRenderer lineRenderer = roadObj.AddComponent<LineRenderer>();
-                roadObj.AddComponent<RoadSegmentTrigger>();
+                RoadSegmentTrigger roadSegmentTrigger = roadObj.AddComponent<RoadSegmentTrigger>();
+                roadSegmentTrigger.savingManager = savingManager;
+                roadSegmentTrigger.tile = tile;
                 BoxCollider collider = roadObj.AddComponent<BoxCollider>();
 
                 lineRenderer.positionCount = segment.Length;
@@ -163,7 +162,7 @@ public class OSMDataFetcher : MonoBehaviour
 
                 roadObjList.Add(roadObj);
 
-                if (walkedOnRoads.ContainsKey(tile) && walkedOnRoads[tile].Find((item) => item.Equals(roadObj))) {
+                if (savingManager.walkedOnRoads.ContainsKey(tile) && savingManager.walkedOnRoads[tile].Find((item) => item.Equals(roadObj))) {
                     lineRenderer.enabled = true;
                 }
             }
@@ -178,17 +177,13 @@ public class OSMDataFetcher : MonoBehaviour
         {
             if (tile == new Vector2(tileManager.tileX, tileManager.tileY)) continue;
 
-            List<GameObject> roadObjList = new List<GameObject>();
             foreach (GameObject roadObj in renderedRoads[tile])
             {
+                if (roadObj == null) continue; // Skip if null
                 LineRenderer lineRenderer = roadObj.GetComponent<LineRenderer>();
-                if (lineRenderer.enabled) {
-                    roadObjList.Add(roadObj);
-                }
+                if (lineRenderer == null) continue; // Skip if missing component
+
                 Destroy(roadObj);
-            }
-            if (roadObjList.Count > 0) {
-                walkedOnRoads[tile] = roadObjList;
             }
             cachedRoads.Remove(tile);
         }

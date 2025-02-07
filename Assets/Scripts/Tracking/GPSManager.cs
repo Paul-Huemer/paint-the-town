@@ -8,7 +8,7 @@ public class GPSManager : MonoBehaviour
     public PlayerMarker playerMarker;
 
     private bool gpsInitialized = false;
-    private float updateInterval = 0.03f; // Update GPS every second
+    private float updateInterval = 0.2f; // Update GPS every second
 
     public float lat = 0;
     public float lon = 0;

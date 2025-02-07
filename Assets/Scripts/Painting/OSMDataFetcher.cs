@@ -10,12 +10,10 @@ public class OSMDataFetcher : MonoBehaviour
     public TileManager tileManager;
     public Material roadMaterial; // Assign a simple material in the Inspector
     public RoadPainter roadPainter;
-    public SavingManager savingManager;
 
-    public List<Vector3[]> storedRoadSegments = new List<Vector3[]>(); // Stores road segment positions
     public List<Vector3> roadPositions = new List<Vector3>();
 
-    private HashSet<Vector2Int> loadedTiles = new HashSet<Vector2Int>(); // Keeps track of loaded tiles
+    private HashSet<Vector2Int> loadedTiles = new HashSet<Vector2Int>();
     private Dictionary<Vector2Int, List<Vector3[]>> cachedRoads = new Dictionary<Vector2Int, List<Vector3[]>>();
     private Dictionary<Vector2Int, List<GameObject>> renderedRoads = new Dictionary<Vector2Int, List<GameObject>>();
 
@@ -54,10 +52,9 @@ public class OSMDataFetcher : MonoBehaviour
             {
                 string jsonData = request.downloadHandler.text;
                 List<Vector3[]> roadSegments = ParseRoadData(jsonData, tileCoords);
-                cachedRoads[tileCoords] = roadSegments;
-                storedRoadSegments.AddRange(roadSegments);
-                UnloadRoads();
-                DrawRoads();  // ✅ Refresh the roads
+                roadPainter.cachedRoads[tileCoords] = roadSegments;
+                roadPainter.UnloadRoads();
+                roadPainter.DrawRoads();  // ✅ Refresh the roads
             }
             else
             {
@@ -65,8 +62,6 @@ public class OSMDataFetcher : MonoBehaviour
             }
         }
     }
-
-
 
     List<Vector3[]> ParseRoadData(string jsonData, Vector2Int tileCoords)
     {
@@ -129,66 +124,6 @@ public class OSMDataFetcher : MonoBehaviour
         return roadSegments;
     }
 
-    void DrawRoads()
-    {
-        foreach (var tile in cachedRoads.Keys)
-        {
-            if (!cachedRoads.ContainsKey(tile)) continue; // Skip tiles with no roads
-
-            List<GameObject> roadObjList = new List<GameObject>();
-            foreach (Vector3[] segment in cachedRoads[tile])
-            {
-                GameObject roadObj = new GameObject($"RoadSegment {tile}");
-                LineRenderer lineRenderer = roadObj.AddComponent<LineRenderer>();
-                RoadSegmentTrigger roadSegmentTrigger = roadObj.AddComponent<RoadSegmentTrigger>();
-                roadSegmentTrigger.savingManager = savingManager;
-                roadSegmentTrigger.tile = tile;
-                BoxCollider collider = roadObj.AddComponent<BoxCollider>();
-
-                lineRenderer.positionCount = segment.Length;
-                lineRenderer.SetPositions(segment);
-                lineRenderer.startWidth = 0.03f;
-                lineRenderer.endWidth = 0.03f;
-                lineRenderer.material = roadMaterial;
-                lineRenderer.useWorldSpace = true;  // Ensure world space positioning
-                lineRenderer.sortingOrder = 10;  // Ensure it's drawn above the map
-
-                float segmentLength = Vector3.Distance(segment[0], segment[1]);
-                Vector3 midPoint = (segment[0] + segment[1]) / 2;
-
-                collider.center = midPoint;
-                collider.size = new Vector3(0.05f, 1f, segmentLength);
-                collider.isTrigger = true;
-
-                roadObjList.Add(roadObj);
-
-                if (savingManager.walkedOnRoads.ContainsKey(tile) && savingManager.walkedOnRoads[tile].Find((item) => item.Equals(roadObj))) {
-                    lineRenderer.enabled = true;
-                }
-            }
-            if (roadObjList.Count > 0) {
-                renderedRoads[tile] = roadObjList;
-            }
-        }
-    }
-
-    void UnloadRoads() {
-        foreach (var tile in renderedRoads.Keys)
-        {
-            if (tile == new Vector2(tileManager.tileX, tileManager.tileY)) continue;
-
-            foreach (GameObject roadObj in renderedRoads[tile])
-            {
-                if (roadObj == null) continue; // Skip if null
-                LineRenderer lineRenderer = roadObj.GetComponent<LineRenderer>();
-                if (lineRenderer == null) continue; // Skip if missing component
-
-                Destroy(roadObj);
-            }
-            cachedRoads.Remove(tile);
-        }
-    }
-
     void ConvertTileToBoundingBox(int tileX, int tileY, int zoom, out float minLat, out float minLon, out float maxLat, out float maxLon)
     {
         float numTiles = Mathf.Pow(2, zoom);
@@ -221,9 +156,6 @@ public class OSMDataFetcher : MonoBehaviour
         Vector3 worldPos = new Vector3(worldX, 0.1f, worldY);
         return worldPos;
     }
-
-
-
 
 
     [System.Serializable]

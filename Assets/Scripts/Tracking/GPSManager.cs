@@ -13,8 +13,6 @@ public class GPSManager : MonoBehaviour
     public float lat = 0;
     public float lon = 0;
 
-    private float testLat = 0;
-
     void Start()
     {
         if (tileManager == null)
@@ -64,8 +62,7 @@ public class GPSManager : MonoBehaviour
         {
             if (Input.location.status == LocationServiceStatus.Running)
             {
-                testLat += 0.0001f;
-                lat = Input.location.lastData.latitude + testLat;
+                lat = Input.location.lastData.latitude;
                 lon = Input.location.lastData.longitude;
 
                 int newTileX, newTileY;
